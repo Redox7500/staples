@@ -1,211 +1,115 @@
-import pygame
-# from pygame import gfxdraw
+import pyglet
+from pyglet.window import mouse
 import numpy as np
-
-pygame.init()
-pygame.font.init()
-
-ARIAL = pygame.font.SysFont("Arial", 30)
 
 SCREEN_WIDTH = 1600
 SCREEN_HEIGHT = 800
-SCREEN = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+MAX_FPS = 120
 
-CLOCK = pygame.time.Clock()
-MAX_FPS = 1000
-running = True
+WINDOW = pyglet.window.Window(width=1000, height=600, caption="staple")
+BATCH = pyglet.graphics.Batch()
+
+mouse_state = mouse.MouseStateHandler()
+WINDOW.push_handlers(mouse_state)
+
+objects = []
 delta_time = 1000 / MAX_FPS
 
-def aacircle(screen, position, radius, color):
-    position = np.array(position, dtype=int)
-    if position[0] + radius < 0 or position[0] + radius < 0 or position[1] - radius > SCREEN_WIDTH or position[1] - radius > SCREEN_HEIGHT:
-        return
-    
-    # gfxdraw.aacircle(screen, *position, radius, color)
-    # gfxdraw.filled_circle(screen, *position, radius, color)
-    pygame.draw.circle(screen, color, position, radius)
-
-# def get_static_rectangles_intersection(scene, position, new_position):
-#     for object in scene.objects:
-#         if type(object).__name__ != "StaticRectangle":
-#             continue
-
-#         rect = object.rect
-
-#         clipped_line = rect.clipline(position, new_position)
-#         if clipped_line:
-#             return np.array(clipped_line[0])
-
-#     return None
-
-def is_within(value, end_1, end_2):
-    return value > min(end_1, end_2) and value < max(end_1, end_2)
-
-def get_intersection(line_1, line_2):
-    m_1_numerator = (line_1[1][1] - line_1[0][1])
-    m_2_numerator = (line_2[1][1] - line_2[0][1])
-    m_1_denominator = (line_1[1][0] - line_1[0][0])
-    m_2_denominator = (line_2[1][0] - line_2[0][0])
-
-    if m_1_denominator == 0:
-        if m_2_denominator == 0:
-            return None
-        if is_within(line_1[0][0], line_2[0][0], line_2[1][0]):
-            return [line_1[0][0], line_2[0][1] - line_2[0][0] * m_2_numerator / m_2_denominator]
-        else:
-            return None
-    if m_2_denominator == 0:
-        if m_1_denominator == 0:
-            return None
-        if is_within(line_2[0][0], line_1[0][0], line_1[1][0]):
-            return [line_2[0][0], line_1[0][1] - line_1[0][0] * m_1_numerator / m_1_denominator]
-        else:
-            return None
-        
-    m_1 = m_1_numerator / m_1_denominator
-    m_2 = m_2_numerator / m_2_denominator
-    
-    m_difference = m_2 - m_1
-
-    if m_difference == 0:
-        return None
-
-    b_1 = line_1[0][1] - line_1[0][0] * m_1
-    b_2 = line_2[0][1] - line_2[0][0] * m_2
-
-    b_difference = b_1 - b_2
-
-    x = b_difference / m_difference
-
-    line_1_min_x = min(line_1[0][0], line_1[1][0])
-    line_2_min_x = min(line_2[0][0], line_2[1][0])
-    range_min = max(line_1_min_x, line_2_min_x)
-
-    line_1_max_x = max(line_1[0][0], line_1[1][0])
-    line_2_max_x = max(line_2[0][0], line_2[1][0])
-    range_max = min(line_1_max_x, line_2_max_x)
-
-    if is_within(x, range_min, range_max):
-        return [x, x * m_1 + b_1]
-    else:
-        return None
-    
-# print(get_intersection(np.array([[1, 1], [1, -1]])))
-
-def clipline(rectangle, line):
-    # top_coordinate = rectangle.top
-    # right_coordinate = rectangle.right
-    # bottom_coordinate = rectangle.bottom
-    # left_coordinate = rectangle.left
-
-    is_point_1_inside = is_within(line[0][0], rectangle.left, rectangle.right) and is_within(line[0][1], rectangle.top, rectangle.bottom)
-    is_point_2_inside = is_within(line[1][0], rectangle.left, rectangle.right) and is_within(line[1][1], rectangle.top, rectangle.bottom)
-
-    if is_point_1_inside and is_point_2_inside:
-        return line.copy()
-
-    # top_side = np.array([[left_coordinate, top_coordinate], [right_coordinate, top_coordinate]])
-    # right_side = np.array([[right_coordinate, top_coordinate], [right_coordinate, bottom_coordinate]])
-    # bottom_side = np.array([[right_coordinate, bottom_coordinate], [left_coordinate, bottom_coordinate]])
-    # left_side = np.array([[left_coordinate, bottom_coordinate], [left_coordinate, top_coordinate]])
-
-    # top_intersection = get_intersection(line, top_side)
-    # right_intersection = get_intersection(line, right_side)
-    # bottom_intersection = get_intersection(line, bottom_side)
-    # left_intersection = get_intersection(line, left_side)
-    sides = [
-        np.array([rectangle.topleft, rectangle.topright]),
-        np.array([rectangle.topright, rectangle.bottomright]),
-        np.array([rectangle.bottomright, rectangle.bottomleft]),
-        np.array([rectangle.bottomleft, rectangle.topleft])
+def get_rectangle_sides(shape):
+    left = shape.x
+    top = shape.y + shape.height
+    right = shape.x + shape.width
+    bottom = shape.y
+    return [
+        [np.array([left, bottom]), np.array([left, top])],
+        [np.array([left, top]), np.array([right, top])],
+        [np.array([right, top]), np.array([right, bottom])],
+        [np.array([right, bottom]), np.array([left, bottom])]
     ]
 
-    intersections = []
-    for side in sides:
-        intersection = get_intersection(line, side)
-        if intersection != None:
-            intersections.append(intersection)
-
-    # intersections = np.array([top_intersection, right_intersection, bottom_intersection, left_intersection])
-    # # intersections = intersections[np.array([intersection.size > 0 for intersection in intersections])]
-    # # intersections = list(filter(lambda x: x is not None, intersections))
-    # intersections = intersections[intersections != None]
-
-    if len(intersections) == 2:
-        if np.linalg.norm(intersections[0] - line[0]) < np.linalg.norm(intersections[1] - line[0]):
-            return np.array([intersections[0], intersections[1]])
-        else:
-            return np.array([intersections[1], intersections[0]])
-    elif len(intersections) == 1:
-        if is_point_1_inside:
-            return np.array([line[0], intersections[0]])
-        else:
-            return np.array([intersections[0], line[1]])
-    else:
-        return np.empty(0)
-
-def get_static_rectangles_intersection(scene, position, new_position):
-    for object in scene.objects:
+def get_static_rectangles_intersection(current_position, new_position):
+    for object in objects:
         if type(object).__name__ != "StaticRectangle":
             continue
 
-        rect = object.rect
+        intersection = get_collision(get_rectangle_sides(object.shape), current_position, new_position)
+        if intersection is not None:
+            return intersection
 
-        clipped_line = clipline(rect, np.array([position, new_position]))
-        if list(clipped_line):
-            return np.array(clipped_line[0])
-    
+def cross_product(v, u):
+    return v[0] * u[1] - v[1] * u[0]
+
+def get_intersection(line_1, line_2):
+    line_1_delta = line_1[1] - line_1[0]
+    line_2_delta = line_2[1] - line_2[0]
+    deltas_cross_product = cross_product(line_1_delta, line_2_delta)
+
+    if deltas_cross_product != 0:
+        first_points_delta = line_2[0] - line_1[0]
+        line_1_delta_scalar = cross_product(first_points_delta, line_2_delta) / deltas_cross_product
+        line_2_delta_scalar = cross_product(first_points_delta, line_1_delta) / deltas_cross_product
+
+        if 0 <= line_1_delta_scalar and line_1_delta_scalar <= 1 and 0 <= line_2_delta_scalar and line_2_delta_scalar <= 1:
+            return line_1[0] + line_1_delta_scalar * line_1_delta
+        
     return None
 
-class Scene:
-    def __init__(self, objects=[]):
-        self.objects = objects
+def get_collision(polygon_sides, current_position, new_position):
+    least_distance_intersection = None
+    least_distance = None
+    for i in range(len(polygon_sides)):
+        intersection = get_intersection(polygon_sides[i], [current_position, new_position])
+        if not intersection is None:
+            distance = np.linalg.norm(intersection - current_position)
+            if least_distance_intersection is None or distance < least_distance:
+                least_distance_intersection = i
+                least_distance = distance
     
-    def update(self, screen, events, delta_time):
-        for object in self.objects:
-            object.update(screen, events, delta_time)
-    
-    def draw(self, screen, events, delta_time):
-        for object in self.objects:
-            object.draw(screen, events, delta_time)
+    return least_distance_intersection
 
 class StaticRectangle:
     def __init__(self, position, size, color=(255, 255, 255)):
-        self.rect = pygame.Rect(*position, *size)
-        self.color = color
+        self.shape = pyglet.shapes.Rectangle(*position, *size, color=color, batch=BATCH)
+        
+        objects.append(self)
 
-    def update(self, screen, events, delta_time):
+    def update(self, delta_time):
         ...
-    
-    def draw(self, screen, events, delta_time):
-        pygame.draw.rect(screen, self.color, self.rect)
 
 class Point:
     def __init__(self, position, mass=100, radius=10, color=(255, 255, 255), draggable=False):
-        self.position = np.array(position)
-        self.previous_position = self.position.copy()
+        self.previous_position = np.array(position)
 
         self.mass = mass
-        self.gravity_force = np.array([0, 0.0005 * self.mass])
+        self.gravity_force = np.array([0, -500 * self.mass])
 
-        self.radius = radius
-        self.color = color
+        self.shape = pyglet.shapes.Circle(position[0], position[1], radius, color=color, batch=BATCH)
 
         self.draggable = draggable
         self.selected = False
+
+        objects.append(self)
+
+    @property
+    def position(self):
+        return np.array(self.shape.position)
+    
+    @position.setter
+    def position(self, value):
+        self.shape.position = tuple(value)
     
     def move_to(self, new_position, prioritize=False):
         if not(self.selected) or prioritize:
-            self.previous_position = self.position.copy()
-            intersection = get_static_rectangles_intersection(scene, self.position, new_position)
+            self.previous_position = self.position
+            intersection = get_static_rectangles_intersection(self.position, new_position)
             if intersection is None:
                 self.position = new_position
-            # else:
-            #     vector = intersection - self.position
-            #     radius_vector = np.linalg.norm(vector) * self.radius
-            #     self.position = intersection - radius_vector
+            else:
+                vector = intersection - self.position
+                radius_vector = vector / np.linalg.norm(vector) * (self.shape.radius + 1)
+                self.position = intersection - radius_vector
     
-    def apply_force(self, screen, events, delta_time, force, use_previous_position=False, prioritize=False):
+    def apply_force(self, delta_time, force, prioritize=False, use_previous_position=False):
         if not(self.selected) or prioritize:
             new_position = self.position + force / self.mass * delta_time ** 2
 
@@ -213,35 +117,29 @@ class Point:
                 new_position += self.position - self.previous_position
                 self.previous_position = self.position.copy()
 
-            intersection = get_static_rectangles_intersection(scene, self.position, new_position)
-            print(intersection)
+            intersection = get_static_rectangles_intersection(self.position, new_position)
             if intersection is None:
                 self.position = new_position
-            # else:
-            #     vector = intersection - self.position
-            #     radius_vector = vector / np.linalg.norm(vector) * self.radius
-            #     self.position = intersection - radius_vector
+            else:
+                vector = intersection - self.position
+                radius_vector = vector / np.linalg.norm(vector) * (self.shape.radius + 1)
+                self.position = intersection - radius_vector
     
-    def update(self, screen, events, delta_time):
-        mouse_position = np.array(pygame.mouse.get_pos())
-
+    def update(self, delta_time):
         if self.draggable:
-            for event in events:
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == pygame.BUTTON_LEFT and np.linalg.norm(np.array(mouse_position) - np.array(self.position)) < self.radius:
+            if mouse_state[mouse.LEFT]:
+                if np.linalg.norm(np.array([mouse_state.x, mouse_state.y]) - self.position) < self.shape.radius:
                     self.selected = True
-                if event.type == pygame.MOUSEBUTTONUP and event.button == pygame.BUTTON_LEFT:
-                    self.selected = False
+            else:
+                self.selected = False
 
-        if self.selected:
-            self.move_to(mouse_position, prioritize=True)
+            if self.selected:
+                self.move_to(np.array([mouse_state.x, mouse_state.y]), prioritize=True)
 
-        self.apply_force(screen, events, delta_time, self.gravity_force, use_previous_position=True)
-    
-    def draw(self, screen, events, delta_time):
-        aacircle(screen, self.position, self.radius, self.color)
+        self.apply_force(delta_time, self.gravity_force, use_previous_position=True)
 
 class Line:
-    def __init__(self, point_1, point_2, attached_points=[], spring_constant=0.1, constraint_iterations=100):
+    def __init__(self, point_1, point_2, attached_points=[], spring_constant=0.1, constraint_iterations=200):
         self.point_1 = point_1
         self.point_2 = point_2
         self.attached_points = attached_points
@@ -250,21 +148,26 @@ class Line:
         self.resting_length = np.linalg.norm(self.point_2.position - self.point_1.position)
         self.color = (np.array(self.point_1.color) + np.array(self.point_2.color)) / 2
 
+        self.shape = pyglet.shapes.Line(*self.point_1.position, *self.point_2.position, 1, self.color, batch=BATCH)
+
         self.spring_constant = spring_constant
         self.constraint_iterations = constraint_iterations
 
-    def constrain_points(self, screen, events, delta_time):
+        objects.append(self)
+
+    def constrain_points(self, delta_time):
         distance = np.linalg.norm(self.point_2.position - self.point_1.position)
         if distance:
             force = (self.point_1.position - self.point_2.position) / distance * self.spring_constant * (self.resting_length - distance)
-            self.point_1.apply_force(screen, events, delta_time, force)
-            self.point_2.apply_force(screen, events, delta_time, -force)
+            self.point_1.apply_force(delta_time, force)
+            self.point_2.apply_force(delta_time, -force)
         
             for point, offset in zip(self.attached_points, self.attached_point_offsets):
                 point.move_to(self.point_1.position + offset)
     
-    def draw(self, screen, events, delta_time):
-        pygame.draw.aaline(screen, self.color, self.point_1.position, self.point_2.position)
+    def update(self, delta_time):
+        self.shape.position = self.point_1.position
+        self.shape.x1, self.shape.y1 = self.point_2.position
 
 class Body:
     def __init__(self, lines):
@@ -278,6 +181,8 @@ class Body:
                 self.points.append(line.point_2)
 
         self.max_constraint_iterations = max([line.constraint_iterations for line in self.lines])
+
+        objects.append(self)
     
     @classmethod
     def create_rope(cls, position, sections, length):
@@ -318,101 +223,34 @@ class Body:
 
         return cls(lines)
     
-    def update(self, screen, events, delta_time):
+    def update(self, delta_time):
         for point in self.points:
-            point.update(screen, events, delta_time)
-
-        # constraint_iterations = [line.constraint_iterations for line in self.lines]
-        # sorted_indices = np.argsort(constraint_iterations)
-        # while len(sorted_indices):
-        #     for i in range(self.lines[sorted_indices[0]].constraint_iterations):
-        #         [self.lines[line_index].constrain_points(screen, events, delta_time) for line_index in sorted_indices]
-
-        #     sorted_indices = sorted_indices[1:]
+            point.update(delta_time)
 
         lines_remaining = self.lines.copy()
         for i in range(self.max_constraint_iterations):
             for line in lines_remaining:
                 if i < line.constraint_iterations:
-                    line.constrain_points(screen, events, delta_time)
+                    line.constrain_points(delta_time)
                 else:
                     lines_remaining.remove(line)
-            
-        # for i in range(self.max_constraint_iterations):
-        #     for line in self.lines:
-        #         if i < line.constraint_iterations:
-        #             line.constrain_points(screen, events, delta_time)
 
-    def draw(self, screen, events, delta_time):
-        for line in self.lines:
-            line.draw(screen, events, delta_time)
 
-            line.point_1.draw(screen, events, delta_time)
-            line.point_2.draw(screen, events, delta_time)
+@WINDOW.event
+def on_draw():
+    WINDOW.clear()
 
-# points = [
-#     Point(0, 0, color=(255, 0, 0), draggable=True),
-#     Point(100, 0, color=(255, 0, 0), draggable=True),
-#     Point(100, 100, color=(0, 0, 255), draggable=True),
-#     Point(0, 100, color=(0, 0, 255), draggable=True),
-#     Point(50, 50, color=(255, 255, 0), draggable=True)
-# ]
-# body = Body([
-#     Line(
-#         points[0],
-#         points[1]
-#     ),
-#     Line(
-#         points[1],
-#         points[2]
-#     ),
-#     Line(
-#         points[2],
-#         points[3]
-#     ),
-#     Line(
-#         points[3],
-#         points[0]
-#     ),
-#     Line(
-#         points[0],
-#         points[4]
-#     ),
-#     Line(
-#         points[1],
-#         points[4]
-#     ),
-#     Line(
-#         points[2],
-#         points[4]
-#     ),
-#     Line(
-#         points[3],
-#         points[4]
-#     )
-# ])
-scene = Scene()
-scene.objects.append(Body.create_soft_body([SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2], 150, 3))
+    BATCH.draw()
 
-wall_width = 1
-scene.objects.append(StaticRectangle([0, SCREEN_HEIGHT - wall_width], [SCREEN_WIDTH, wall_width]))
-scene.objects.append(StaticRectangle([0, 0], [wall_width, SCREEN_HEIGHT]))
-scene.objects.append(StaticRectangle([SCREEN_WIDTH - wall_width, 0], [wall_width, SCREEN_HEIGHT]))
-scene.objects.append(StaticRectangle([0, 0], [SCREEN_WIDTH, wall_width]))
+def update(delta_time):
+    for object in objects:
+        object.update(delta_time)
+    FPS_TEXT.text = f"FPS: {1 / delta_time * 1000}"
 
-while running:
-    events = pygame.event.get()
-    for event in events:
-        if event.type == pygame.QUIT:
-            running = False
+FPS_TEXT = pyglet.text.Label(f"FPS: {MAX_FPS}", font_name="Arial", anchor_y="top", batch=BATCH)
 
-    SCREEN.fill("#222230")
-    scene.update(SCREEN, events, delta_time)
-    scene.draw(SCREEN, events, delta_time)
-    
-    SCREEN.blit(ARIAL.render(f"{1000 / delta_time:.2f} fps", True, (255, 255, 255)), (0, 0))
+StaticRectangle((0, 0), (2000, 100))
+Point((100, 1000), radius=50, draggable=True)
 
-    pygame.display.flip()
-    delta_time = CLOCK.tick(MAX_FPS)
-
-pygame.quit()
+pyglet.clock.schedule_interval(update, 1 / MAX_FPS)
+pyglet.app.run()
