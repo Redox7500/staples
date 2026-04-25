@@ -161,9 +161,6 @@ class Line:
         self.point_1 = point_1
         self.point_2 = point_2
         self.attached_points = attached_points
-        # if self.attached_points:
-        #     self.attached_point_constraint_1 = Line(self.point_1, Point(self.point_1.position.copy(), self.point_1.mass, 0))
-        #     self.attached_point_constraint_2 = Line(self.point_2, Point(self.point_2.position.copy(), self.point_1.mass, 0))
 
         self._resting_length = np.linalg.norm(self.point_2.position - self.point_1.position)
         self.tension_resting_length = self._resting_length / (1 + tension)
@@ -172,7 +169,6 @@ class Line:
         horizontal_axis = np.array([-vertical_axis[1], vertical_axis[0]])
         axes_matrix = np.column_stack((horizontal_axis, vertical_axis))
         self.attached_points_offsets = [np.linalg.solve(axes_matrix, point.position - self.point_1.position) for point in self.attached_points]
-        # self.attached_points_offsets = [(point.position - self.point_1.position) / self.tension_resting_length for point in self.attached_points]
 
         self.shape = pyglet.shapes.Line(*self.point_1.shape.position, *self.point_2.shape.position, 1, np.array((np.array(self.point_1.shape.color) + np.array(self.point_2.shape.color)) / 2, dtype=int), batch=BATCH)
 
@@ -202,87 +198,21 @@ class Line:
         self.attached_points_offsets = [(point.position - self.point_1.position) / self.tension_resting_length for point in self.attached_points]
 
     def constrain_points(self, delta_time):
-        # new_b = a1 + t(a2 - a1)
-
         distance = np.linalg.norm(self.point_2.position - self.point_1.position)
         if distance:
             force = spring_force(self.point_1.position, self.point_2.position, self.tension_resting_length, self.spring_constant)
             self.point_1.apply_force(delta_time, force)
             self.point_2.apply_force(delta_time, -force)
-
-            # line_vector = self.point_2.position - self.point_1.position
-            # distance = np.linalg.norm(line_vector)
-            # normalized_line_vector = line_vector / distance
+            
             vertical_axis = self.point_2.position - self.point_1.position
             horizontal_axis = np.array([-vertical_axis[1], vertical_axis[0]])
             axes_matrix = np.column_stack((horizontal_axis, vertical_axis))
             for _ in range(self.attached_points_constraint_iterations):
                 for attached_point, offset in zip(self.attached_points, self.attached_points_offsets):
-                    # (attached_point.position - point_1.position) / distance = offset
-                    # force = spring_force(attached_point.position, self.point_1.position + offset * (self.point_2.position - self.point_1.position), 0, self.spring_constant)
                     force = spring_force(attached_point.position, self.point_1.position + np.matmul(axes_matrix, offset), 0, self.attached_points_spring_constant)
                     attached_point.apply_force(delta_time, force * 5)
                     self.point_1.apply_force(delta_time, -force)
                     self.point_2.apply_force(delta_time, -force)
-
-        # f(2.5) = 60.26
-        # f(2) = 140.26
-        #
-
-        # f(2.5) = 0.6026
-        # f(2) = 0.5
-        # f(1.5) = 1.6714
-        # f(1) = 2
-        # f(0.5) = 3
-        # f(0) = infinity
-        # f(x) = 
-
-        # line_vector = self.point_2.position - self.point_1.position
-        # normalized_line_vector = line_vector / np.linalg.norm(line_vector)
-        # target_length_change = self.tension_resting_length / 2 * normalized_line_vector - line_vector
-        # target_point_1_position = self.point_1.position - target_length_change
-
-        # distance = np.linalg.norm(target_point_1_position - self.point_1.position)
-
-        # if distance:
-        #     force = (self.point_1.position - target_point_1_position) / distance * self.spring_constant * (self.tension_resting_length / 2 - distance)
-        #     self.point_1.apply_force(delta_time, force)
-        #     self.point_2.apply_force(delta_time, -force)
-        
-        # new_b  = a1 + t(a2 - a1)
-        # new_a1 = b - t(a2 - a1)
-        # new_a2 = b + (1 - t)(a2 - a1)
-
-        # target_point_1 = self.point_1.position - (self.tension_resting_length - np.linalg.norm(self.point_2.position - self.point_1.position)) / 2
-
-        # distance = np.linalg.norm((np.linalg.norm(self.point_2.position - self.point_1.position - self.tension_resting_length)) / 2)
-
-        # if distance:
-        #     force = (self.point_1.position - target_point_1) / distance * self.spring_constant * (self.tension_resting_length - distance)
-        #     self.point_1.apply_force(delta_time, force)
-        #     self.point_2.apply_force(delta_time, -force)
-
-        # distance = np.linalg.norm(self.point_2.position - self.point_1.position)
-        # imaginary line parallel to this line but lines up with attached point, spring between corresponding ends of real and imaginary lines
-        # if distance:
-        #     force = (self.point_1.position - self.point_2.position) / distance * self.spring_constant * (self.tension_resting_length - distance)
-        #     # self.point_1.apply_force(delta_time, force + self.point_1_position + offset * distance)
-        #     self.point_1.apply_force(delta_time, force)
-        #     self.point_2.apply_force(delta_time, -force)
-
-        #     new_distance = np.linalg.norm(self.point_2.position - self.point_1.position)
-
-        #     for point, offset in zip(self.attached_points, self.attached_points_offsets):
-        #         position = point.position
-                
-        #         # self.attached_point_constraint_1.point_2.move_to(position - offset * new_distance, collides=False)
-        #         # self.attached_point_constraint_2.point_2.move_to(position - offset * new_distance + new_distance, collides=False)
-        #         # self.attached_point_constraint_1.constrain_points(delta_time)
-        #         # self.attached_point_constraint_2.constrain_points(delta_time)
-                
-
-        #     # for point, offset in zip(self.attached_points, self.attached_points_offsets):
-        #     #     point.move_to(self.point_1.position + offset * distance)
     
     def update(self, delta_time):
         self.shape.position = self.point_1.shape.position
@@ -377,19 +307,9 @@ class Staple(Body):
         self.muscle_1 = Line(self.leg_1_muscle_point, self.body_muscle_point)
         self.muscle_2 = Line(self.leg_2_muscle_point, self.body_muscle_point)
 
-        # self.leg_1_muscle_point_connection_1 = Line(self.foot_1, self.leg_1_muscle_point, tension=0.03)
-        # self.leg_1_muscle_point_connection_2 = Line(self.shoulder_1, self.leg_1_muscle_point, tension=0.03)
-        # self.body_muscle_point_connection_1 = Line(self.shoulder_1, self.body_muscle_point, tension=0.03)
-        # self.body_muscle_point_connection_2 = Line(self.shoulder_2, self.body_muscle_point, tension=0.03)
-        # self.leg_2_muscle_point_connection_1 = Line(self.foot_2, self.leg_2_muscle_point, tension=0.03)
-        # self.leg_2_muscle_point_connection_2 = Line(self.shoulder_2, self.leg_2_muscle_point, tension=0.03)
-
         super().__init__([
             self.leg_1, self.body, self.leg_2,
-            self.muscle_1, self.muscle_2,
-            # self.leg_1_muscle_point_connection_1, self.leg_1_muscle_point_connection_2,
-            # self.body_muscle_point_connection_1, self.body_muscle_point_connection_2,
-            # self.leg_2_muscle_point_connection_1, self.leg_2_muscle_point_connection_2
+            self.muscle_1, self.muscle_2
         ], constraint_iterations_override=constraint_iterations_override)
 
 @WINDOW.event
@@ -414,11 +334,7 @@ def update(delta_time):
 FPS_TEXT = pyglet.text.Label(f"FPS: {MAX_FPS}", font_name="Arial", anchor_x="left", anchor_y="top", batch=BATCH)
 
 StaticRectangle((0, 0), (2000, 100))
-# for i in range(10):
-#     Staple((0, 1000), 100, 100, constraint_iterations_override=1)
-staple = Staple((1000, 1000), 300, 300)#, constraint_iterations_override=1)
-# staple = Body.create_rope((200, 200), 1, 100)
-# Body.create_rope((400, 200), 1, 100)
+staple = Staple((1000, 1000), 300, 300)
 
 pyglet.clock.schedule_interval(update, 1 / MAX_FPS)
 pyglet.app.run()
