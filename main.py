@@ -157,18 +157,18 @@ class Point:
             self.apply_force(delta_time, self.gravity_force, use_previous_position=True)
 
 class Line:
-    def __init__(self, point_1, point_2, spring_constant=5000, constraint_iterations=10, attached_points=[], attached_points_spring_constant=None, attached_points_constraint_iterations=1, tension=0):
+    def __init__(self, point_1, point_2, spring_constant=5000, constraint_iterations=10, resting_length=None, attached_points=[], attached_points_spring_constant=None, attached_points_constraint_iterations=1, attached_points_offsets=[]):
         self.point_1 = point_1
         self.point_2 = point_2
         self.attached_points = attached_points
 
-        self._resting_length = np.linalg.norm(self.point_2.position - self.point_1.position)
-        self.tension_resting_length = self._resting_length / (1 + tension)
+        self._resting_length = np.linalg.norm(self.point_2.position - self.point_1.position) if resting_length is None else resting_length
 
         vertical_axis = self.point_2.position - self.point_1.position
         horizontal_axis = np.array([-vertical_axis[1], vertical_axis[0]])
         axes_matrix = np.column_stack((horizontal_axis, vertical_axis))
-        self.attached_points_offsets = [np.linalg.solve(axes_matrix, point.position - self.point_1.position) for point in self.attached_points]
+        attached_points_offsets = [attached_points_offsets[i] if len(attached_points_offsets) > i else None for i in range(len(self.attached_points))]
+        self.attached_points_offsets = [np.linalg.solve(axes_matrix, attached_point.position - self.point_1.position) if offset is None else offset for attached_point, offset in zip(self.attached_points, attached_points_offsets)]
 
         self.shape = pyglet.shapes.Line(*self.point_1.shape.position, *self.point_2.shape.position, 1, np.array((np.array(self.point_1.shape.color) + np.array(self.point_2.shape.color)) / 2, dtype=int), batch=BATCH)
 
@@ -178,14 +178,6 @@ class Line:
         self.attached_points_constraint_iterations = attached_points_constraint_iterations
 
         objects.append(self)
-    
-    @property
-    def tension(self):
-        return 1 - self._resting_length / self.tension_resting_length
-
-    @tension.setter
-    def tension(self, value):
-        self.tension_resting_length = self._resting_length / (1 + value)
 
     @property
     def resting_length(self):
@@ -193,14 +185,13 @@ class Line:
 
     @resting_length.setter
     def resting_length(self, value):
-        self.tension_resting_length = value / (1 + self.tension)
+        self.attached_points_offsets = [attached_point_offset / self.resting_length * value for attached_point_offset in self.attached_points_offsets]
         self._resting_length = value
-        self.attached_points_offsets = [(point.position - self.point_1.position) / self.tension_resting_length for point in self.attached_points]
 
     def constrain_points(self, delta_time):
         distance = np.linalg.norm(self.point_2.position - self.point_1.position)
         if distance:
-            force = spring_force(self.point_1.position, self.point_2.position, self.tension_resting_length, self.spring_constant)
+            force = spring_force(self.point_1.position, self.point_2.position, self.resting_length, self.spring_constant)
             self.point_1.apply_force(delta_time, force)
             self.point_2.apply_force(delta_time, -force)
             
