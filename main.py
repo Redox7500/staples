@@ -5,7 +5,7 @@ from pyglet.window import key
 
 SCREEN_WIDTH = 1600
 SCREEN_HEIGHT = 800
-MAX_FPS = 120
+MAX_FPS = 60
 MIN_FPS = 10
 
 WINDOW = pyglet.window.Window(width=1000, height=600, caption="staple")
@@ -24,20 +24,21 @@ def get_rectangle_sides(shape):
     right = shape.x + shape.width
     bottom = shape.y
     return [
-        [np.array([left, bottom]), np.array([left, top])],
-        [np.array([left, top]), np.array([right, top])],
-        [np.array([right, top]), np.array([right, bottom])],
-        [np.array([right, bottom]), np.array([left, bottom])]
+        [np.array([left , bottom]), np.array([left , top   ])],
+        [np.array([left , top   ]), np.array([right, top   ])],
+        [np.array([right, top   ]), np.array([right, bottom])],
+        [np.array([right, bottom]), np.array([left , bottom])]
     ]
 
 def get_static_rectangles_intersection(current_position, new_position):
+    all_sides = []
     for object in objects:
-        if type(object).__name__ != "StaticRectangle":
+        if object.__class__.__name__ != "StaticRectangle":
             continue
 
-        intersection = get_collision(get_rectangle_sides(object.shape), current_position, new_position)
-        if intersection is not None:
-            return intersection
+        all_sides += get_rectangle_sides(object.shape)
+    
+    return  get_first_collision(all_sides, current_position, new_position)
 
 def cross_product(v, u):
     return v[0] * u[1] - v[1] * u[0]
@@ -52,32 +53,29 @@ def get_intersection(line_1, line_2):
         line_1_delta_scalar = cross_product(first_points_delta, line_2_delta) / deltas_cross_product
         line_2_delta_scalar = cross_product(first_points_delta, line_1_delta) / deltas_cross_product
 
-        if 0 <= line_1_delta_scalar and line_1_delta_scalar <= 1 and 0 <= line_2_delta_scalar and line_2_delta_scalar <= 1:
+        if 0 <= line_1_delta_scalar <= 1 and 0 <= line_2_delta_scalar <= 1:
             return line_1[0] + line_1_delta_scalar * line_1_delta
         
     return None
 
-def get_collision(polygon_sides, current_position, new_position):
+def get_first_collision(polygon_sides, current_position, new_position):
     least_distance_intersection = None
-    least_distance = None
-    for i in range(len(polygon_sides)):
-        intersection = get_intersection(polygon_sides[i], [current_position, new_position])
+    least_distance = np.inf
+    for side in polygon_sides:
+        intersection = get_intersection(side, [current_position, new_position])
         if intersection is not None:
             distance = np.linalg.norm(intersection - current_position)
-            if least_distance_intersection is None or distance < least_distance:
+            if distance < least_distance:
                 least_distance_intersection = intersection
                 least_distance = distance
     
     return least_distance_intersection
 
 def spring_force(position_1, position_2, resting_length, spring_constant):
-    line_vector = position_2 - position_1
+    line_vector = position_1 - position_2
     distance = np.linalg.norm(line_vector)
 
-    if not distance:
-        return 0
-    
-    return -line_vector / distance * spring_constant * (resting_length - distance)
+    return line_vector / distance * spring_constant * (resting_length - distance) if distance else 0
 
 class StaticRectangle:
     def __init__(self, position, size, color=(255, 255, 255)):
@@ -97,7 +95,7 @@ class Point:
 
         self.shape = pyglet.shapes.Circle(position[0], position[1], radius, color=color, batch=BATCH)
 
-        self.gravity = gravity
+        self.use_gravity = gravity
         self.draggable = draggable
         self.selected = False
 
@@ -109,7 +107,7 @@ class Point:
     
     @position.setter
     def position(self, value):
-        self.shape.position = tuple(value)
+        self.shape.position = (value[0], value[1])
     
     def move_to(self, new_position, collides=True, prioritize=False):
         if not(self.selected) or prioritize:
@@ -153,11 +151,11 @@ class Point:
             if self.selected:
                 self.move_to(np.array([mouse_state.x, mouse_state.y]), prioritize=True)
         
-        if self.gravity:
+        if self.use_gravity:
             self.apply_force(delta_time, self.gravity_force, use_previous_position=True)
 
 class Line:
-    def __init__(self, point_1, point_2, spring_constant=5000, constraint_iterations=10, resting_length=None, attached_points=[], attached_points_spring_constant=None, attached_points_constraint_iterations=1, attached_points_offsets=[]):
+    def __init__(self, point_1, point_2, spring_constant=40000, constraint_iterations=2, resting_length=None, attached_points=[], attached_points_spring_constant=20000, attached_points_constraint_iterations=1, attached_points_offsets=[], draggable_override=None):
         self.point_1 = point_1
         self.point_2 = point_2
         self.attached_points = attached_points
@@ -177,6 +175,8 @@ class Line:
         self.attached_points_spring_constant = attached_points_spring_constant if attached_points_spring_constant is not None else self.spring_constant
         self.attached_points_constraint_iterations = attached_points_constraint_iterations
 
+        self.draggable_override = None
+
         objects.append(self)
 
     @property
@@ -188,10 +188,21 @@ class Line:
         self.attached_points_offsets = [attached_point_offset / self.resting_length * value for attached_point_offset in self.attached_points_offsets]
         self._resting_length = value
 
+    @property
+    def draggable_override(self):
+        return self._draggable_override
+
+    @draggable_override.setter
+    def draggable_override(self, value):
+        self._draggable_override = value
+        if self.draggable_override is not None:
+            self.point_1.draggable = self.point_2.draggable = self.draggable_override
+
     def constrain_points(self, delta_time):
         distance = np.linalg.norm(self.point_2.position - self.point_1.position)
         if distance:
-            force = spring_force(self.point_1.position, self.point_2.position, self.resting_length, self.spring_constant)
+            delta_time_scalar = 1 / (delta_time * MAX_FPS) ** 2
+            force = spring_force(self.point_1.position, self.point_2.position, self.resting_length, self.spring_constant * delta_time_scalar)
             self.point_1.apply_force(delta_time, force)
             self.point_2.apply_force(delta_time, -force)
             
@@ -200,8 +211,8 @@ class Line:
             axes_matrix = np.column_stack((horizontal_axis, vertical_axis))
             for _ in range(self.attached_points_constraint_iterations):
                 for attached_point, offset in zip(self.attached_points, self.attached_points_offsets):
-                    force = spring_force(attached_point.position, self.point_1.position + np.matmul(axes_matrix, offset), 0, self.attached_points_spring_constant)
-                    attached_point.apply_force(delta_time, force * 5)
+                    force = spring_force(attached_point.position, self.point_1.position + np.matmul(axes_matrix, offset), 0, self.attached_points_spring_constant * delta_time_scalar)
+                    attached_point.apply_force(delta_time, force)
                     self.point_1.apply_force(delta_time, -force)
                     self.point_2.apply_force(delta_time, -force)
     
@@ -210,20 +221,33 @@ class Line:
         self.shape.x2, self.shape.y2 = self.point_2.shape.position
 
 class Body:
-    def __init__(self, lines, constraint_iterations_override=None):
+    def __init__(self, lines, constraint_iterations_override=None, draggable_override=None):
         self.lines = lines
+
+        self._draggable_override = draggable_override
 
         self.points = []
         for line in self.lines:
-            if not line.point_1 in self.points:
+            line.draggable_override = self.draggable_override
+            if line.point_1 not in self.points:
                 self.points.append(line.point_1)
-            if not line.point_2 in self.points:
+            if line.point_2 not in self.points:
                 self.points.append(line.point_2)
 
         self.max_constraint_iterations = max([line.constraint_iterations for line in self.lines])
         self.constraint_iterations_override = constraint_iterations_override
 
         objects.append(self)
+    
+    @property
+    def draggable_override(self):
+        return self._draggable_override
+    
+    @draggable_override.setter
+    def draggable_override(self, value):
+        self._draggable_override = value
+        for line in self.lines:
+            line.draggable_override = self.draggable_override
     
     @classmethod
     def create_rope(cls, position, sections, length):
@@ -276,20 +300,20 @@ class Body:
                     else:
                         lines_remaining.remove(line)
         else:
-            for i in range(self.constraint_iterations_override):
+            for _ in range(self.constraint_iterations_override):
                 for line in self.lines:
                     line.constrain_points(delta_time)
 
 class Staple(Body):
-    def __init__(self, position, width, height, constraint_iterations_override=None):
-        self.foot_1 = Point(position, draggable=True)
-        self.shoulder_1 = Point((position[0], position[1] + height), draggable=True)
-        self.shoulder_2 = Point((position[0] + width, position[1] + height), draggable=True)
-        self.foot_2 = Point((position[0] + width, position[1]), draggable=True)
+    def __init__(self, position, leg_1_length, body_length, leg_2_length, constraint_iterations_override=None, draggable=False):
+        self.foot_1 = Point(position, draggable=draggable)
+        self.shoulder_1 = Point((position[0], position[1] + leg_1_length), draggable=draggable)
+        self.shoulder_2 = Point((position[0] + body_length, position[1] + leg_2_length), draggable=draggable)
+        self.foot_2 = Point((position[0] + body_length, position[1]), draggable=draggable)
 
-        self.leg_1_muscle_point = Point((position[0], position[1] + height / 2), draggable=True)
-        self.body_muscle_point = Point((position[0] + width / 2, position[1] + height), draggable=True)
-        self.leg_2_muscle_point = Point((position[0] + width, position[1] + height / 2), draggable=True)
+        self.leg_1_muscle_point = Point((position[0], position[1] + leg_1_length / 2), draggable=draggable)
+        self.body_muscle_point = Point((position[0] + body_length / 2, position[1] + (leg_1_length + leg_2_length) / 2), draggable=draggable)
+        self.leg_2_muscle_point = Point((position[0] + body_length, position[1] + leg_2_length / 2), draggable=True)
 
         self.leg_1 = Line(self.foot_1, self.shoulder_1, attached_points=[self.leg_1_muscle_point])
         self.body = Line(self.shoulder_1, self.shoulder_2, attached_points=[self.body_muscle_point])
@@ -315,17 +339,23 @@ def update(delta_time):
     
     for object in objects:
         object.update(delta_time)
-    FPS_TEXT.text = f"FPS: {1 / delta_time * 1000}"
+    FPS_TEXT.text = f"FPS: {1 / delta_time:.2f}"
 
+    if keyboard_state[key.W]:
+        staple.muscle_1.resting_length += 3
+    if keyboard_state[key.S]:
+        staple.muscle_1.resting_length -= 3
     if keyboard_state[key.UP]:
-        staple.muscle_1.resting_length += 4
+        staple.muscle_2.resting_length += 3
     if keyboard_state[key.DOWN]:
-        staple.muscle_1.resting_length -= 4
+        staple.muscle_2.resting_length -= 3
 
-FPS_TEXT = pyglet.text.Label(f"FPS: {MAX_FPS}", font_name="Arial", anchor_x="left", anchor_y="top", batch=BATCH)
+FPS_TEXT = pyglet.text.Label(f"FPS: {MAX_FPS:.2f}", font_name="Arial", font_size=36, x=0, y=WINDOW.height, anchor_x="left", anchor_y="top", batch=BATCH)
 
 StaticRectangle((0, 0), (2000, 100))
-staple = Staple((1000, 1000), 300, 300)
+staple = Staple((1000, 1000), 300, 300, 300, constraint_iterations_override=2)
+# for _ in range(20):
+#     Staple((1000, 1000), 10, 10, 10, constraint_iterations_override=2)
 
 pyglet.clock.schedule_interval(update, 1 / MAX_FPS)
 pyglet.app.run()
