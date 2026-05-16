@@ -155,7 +155,7 @@ class Point:
             self.apply_force(delta_time, self.gravity_force, use_previous_position=True)
 
 class Line:
-    def __init__(self, point_1, point_2, spring_constant=40000, constraint_iterations=2, resting_length=None, attached_points=[], attached_points_spring_constant=20000, attached_points_constraint_iterations=1, attached_points_offsets=[], draggable_override=None):
+    def __init__(self, point_1, point_2, spring_constant=30000, constraint_iterations=2, resting_length=None, attached_points=[], attached_points_spring_constant=30000, attached_points_constraint_iterations=1, attached_points_offsets=[], draggable_override=None):
         self.point_1 = point_1
         self.point_2 = point_2
         self.attached_points = attached_points
@@ -163,8 +163,7 @@ class Line:
         self._resting_length = np.linalg.norm(self.point_2.position - self.point_1.position) if resting_length is None else resting_length
 
         vertical_axis = self.point_2.position - self.point_1.position
-        horizontal_axis = np.array([-vertical_axis[1], vertical_axis[0]])
-        axes_matrix = np.column_stack((horizontal_axis, vertical_axis))
+        axes_matrix = np.column_stack(([vertical_axis[1], vertical_axis[0]], vertical_axis))
         attached_points_offsets = [attached_points_offsets[i] if len(attached_points_offsets) > i else None for i in range(len(self.attached_points))]
         self.attached_points_offsets = [np.linalg.solve(axes_matrix, attached_point.position - self.point_1.position) if offset is None else offset for attached_point, offset in zip(self.attached_points, attached_points_offsets)]
 
@@ -201,17 +200,15 @@ class Line:
     def constrain_points(self, delta_time):
         distance = np.linalg.norm(self.point_2.position - self.point_1.position)
         if distance:
-            delta_time_scalar = 1 / (delta_time * MAX_FPS) ** 2
-            force = spring_force(self.point_1.position, self.point_2.position, self.resting_length, self.spring_constant * delta_time_scalar)
+            force = spring_force(self.point_1.position, self.point_2.position, self.resting_length, self.spring_constant)
             self.point_1.apply_force(delta_time, force)
             self.point_2.apply_force(delta_time, -force)
             
             vertical_axis = self.point_2.position - self.point_1.position
-            horizontal_axis = np.array([-vertical_axis[1], vertical_axis[0]])
-            axes_matrix = np.column_stack((horizontal_axis, vertical_axis))
+            axes_matrix = np.column_stack(([vertical_axis[1], vertical_axis[0]], vertical_axis))
             for _ in range(self.attached_points_constraint_iterations):
                 for attached_point, offset in zip(self.attached_points, self.attached_points_offsets):
-                    force = spring_force(attached_point.position, self.point_1.position + np.matmul(axes_matrix, offset), 0, self.attached_points_spring_constant * delta_time_scalar)
+                    force = spring_force(attached_point.position, self.point_1.position + np.matmul(axes_matrix, offset), 0, self.attached_points_spring_constant)
                     attached_point.apply_force(delta_time, force)
                     self.point_1.apply_force(delta_time, -force)
                     self.point_2.apply_force(delta_time, -force)
@@ -350,12 +347,12 @@ def update(delta_time):
     if keyboard_state[key.DOWN]:
         staple.muscle_2.resting_length -= 3
 
-FPS_TEXT = pyglet.text.Label(f"FPS: {MAX_FPS:.2f}", font_name="Arial", font_size=36, x=0, y=WINDOW.height, anchor_x="left", anchor_y="top", batch=BATCH)
+FPS_TEXT = pyglet.text.Label(f"FPS: NaN", font_name="Arial", font_size=36, x=0, y=WINDOW.height, anchor_x="left", anchor_y="top", batch=BATCH)
 
 StaticRectangle((0, 0), (2000, 100))
 staple = Staple((1000, 1000), 300, 300, 300, constraint_iterations_override=2)
-# for _ in range(20):
-#     Staple((1000, 1000), 10, 10, 10, constraint_iterations_override=2)
+for _ in range(14):
+    Staple((1000, 1000), 10, 10, 10, constraint_iterations_override=2)
 
 pyglet.clock.schedule_interval(update, 1 / MAX_FPS)
 pyglet.app.run()
