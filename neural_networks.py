@@ -5,9 +5,14 @@ class NeuralNetwork:
         self.weights = weights
         self.weights_transpose = [weights.T for weights in self.weights]
         self.biases = biases
+
+        self.weights_change = [np.zeros(weights.shape) for weights in self.weights]
+        self.biases_change = [np.zeros(biases.shape) for biases in self.biases]
+        self.trains_since_last_change = 0
+
         self.layer_count = len(weights) + 1
         
-        self.learning_rate = 0.1
+        self.learning_rate = 0.5
         self.learning_decay = 1
 
         self.activation = self.tanh
@@ -61,13 +66,6 @@ class NeuralNetwork:
             next_x = self.activation(self.weights[layer] @ next_x + self.biases[layer])
         
         return next_x
-
-    # def backpropagate(self, x, y, inferred_y, learning_rate):
-    #     for weights, biases in zip(self.weights, self.biases)[::-1]:
-    #         outputs_error = y - inferred_y
-    #         outputs_delta = outputs_error * self.activation_derivative(inferred_y)
-    #         hidden_error = outputs_delta @ weights.T
-    #         hidden_delta = hidden_error * self.activation_derivative()
     
     def train(self, x, y_expected):
         unnormalized_activations = [[] for _ in range(self.layer_count)]
@@ -81,37 +79,45 @@ class NeuralNetwork:
             unnormalized_activations[layer + 1] = self.weights[layer] @ next_x + self.biases[layer]
             next_x = self.activation(unnormalized_activations[layer + 1])
             activations[layer + 1] = next_x
-        
-        # y_error = expected_y - unnormalized_activations[layer]
-        # for layer in range(self.layer_count - 1, 0, -1):
-        #     outputs_delta = y_error * self.activation_derivative(unnormalized_activations[layer])
-        #     hidden_error = outputs_delta @ self.weights[layer - 1].T
-        #     hidden_delta = hidden_error * self.activation_derivative(unnormalized_activations[layer - 1])
-
-        #     self.
 
         next_error = self.cost_derivative(next_x, y_expected)
         for layer in range(self.layer_count - 2, -1, -1):
             a = self.activation_derivative(unnormalized_activations[layer + 1]) * next_error
-            self.weights[layer] -= (a[:, None] @ activations[layer][None, :]) * self.learning_rate
-            self.biases[layer] -= a * self.learning_rate
+            self.weights_change[layer] -= a[:, None] @ activations[layer][None, :]
+            self.biases_change[layer] -= a
             next_error = self.weights_transpose[layer] @ a
         
+        self.trains_since_last_change += 1
+    
+    def update_parameters(self):
+        if not self.trains_since_last_change:
+            return
+        
+        multiplier = 1 / self.trains_since_last_change * self.learning_rate
+        for layer in range(self.layer_count - 1):
+            self.weights[layer] += self.weights_change[layer] * multiplier
+            self.biases[layer] += self.biases_change[layer] * multiplier
+
+            self.weights_change[layer].fill(0)
+            self.biases_change[layer].fill(0)
+
         self.weights_transpose = [weights.T for weights in self.weights]
         self.learning_rate *= self.learning_decay
+        self.trains_since_last_change = 0
 
 training_data = [
-    (np.array([0, 0]), np.array([-1])),
-    (np.array([0, 1]), np.array([1])),
-    (np.array([1, 0]), np.array([1])),
+    (np.array([-1, -1]), np.array([-1])),
+    (np.array([-1, 1]), np.array([1])),
+    (np.array([1, -1]), np.array([1])),
     (np.array([1, 1]), np.array([-1]))
 ]
 
 for _ in range(10):
-    neural_network = NeuralNetwork.new_random([2, 2, 1], weights_min=-2, weights_max=2, biases_min=-4, biases_max=4)
-    for _ in range(10000):
+    neural_network = NeuralNetwork.new_random([2, 4, 1], weights_min=-1, weights_max=1, biases_min=-1, biases_max=1)
+    for _ in range(2000):
         for x, y_expected in training_data:
             neural_network.train(x, y_expected)
+        neural_network.update_parameters()
     print(", ".join([f"{neural_network.cost(y_expected, neural_network.evaluate(x))[0]:.10f}" for x, y_expected in training_data]))
     
 # for x, y_expected in training_data:
