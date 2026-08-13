@@ -77,6 +77,12 @@ def spring_force(position_1, position_2, resting_length, spring_constant):
 
     return line_vector / distance * spring_constant * (resting_length - distance) if distance else 0
 
+def angle_between_vectors(vector_1, vector_2):
+    normalized_vector_1 = vector_1 / np.linalg.norm(vector_1)
+    normalized_vector_2 = vector_2 / np.linalg.norm(vector_2)
+
+    return np.arccos(np.dot(normalized_vector_1, normalized_vector_2))
+
 class StaticRectangle:
     def __init__(self, position, size, color=(255, 255, 255)):
         self.shape = pyglet.shapes.Rectangle(*position, *size, color=color, batch=BATCH)
